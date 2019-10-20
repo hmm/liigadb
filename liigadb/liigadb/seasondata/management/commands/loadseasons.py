@@ -21,7 +21,7 @@ class Command(BaseCommand):
         if kwargs.get('playoffs'):
             loadplayoffs(kwargs['path'])
         elif kwargs.get('calculate'):
-            calculate()
+            calculate(kwargs['path'])
         else:
             loadseasons(kwargs['path'])
         

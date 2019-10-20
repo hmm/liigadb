@@ -348,11 +348,18 @@ class TeamSeriesStats(object):
             t.position = pos
             pos += 1
 
-def calculate():
+def calculate(season):
     teamseries = {}
 
+    if season:
+        seasonquery = Season.objects.filter(id=season)
+    else:
+        seasonquery = Season.objects.all()
 
-    for s in Season.objects.all().order_by('id'):
+    for s in seasonquery.order_by('id'):
+        print("Ranking season %s" % s.id, end='                \r')
+        sys.stdout.flush()
+        
         rank = 1
         prevts = None
         if s.id < 2013:
@@ -377,10 +384,13 @@ def calculate():
                     prevts.save()
                     ts.save()
             prevts = ts
-        
 
-    for s in Season.objects.all().order_by('id'):
+
+    for s in seasonquery.order_by('id'):
         
+        print("Ranking playoffs %s" % s.id, end='                \r')
+        sys.stdout.flush()
+
         levels = [5, 5, 4, 4, 4, 4, 3, 3, 2, 1]
         
         for g in Game.objects.filter(playoffs=True, season=s).order_by('-id'):
@@ -418,7 +428,10 @@ def calculate():
     k = list(teamseries.keys())
     k.sort()
     for tsk in k:
+        
         ts = teamseries[tsk]
+
+
         #print tsk, ts.level, ts.won, ts.games
         tss = TeamSeason.objects.get(season=ts.season, team=ts.team)
         vstss = TeamSeason.objects.get(season=ts.season, team=ts.vsteam)
@@ -427,9 +440,12 @@ def calculate():
         else:
             serieslength = (ts.games-ts.wins)*2-1
             
+        seriesid = "%s-%s-%s" % (ts.season.id, ts.team.id, ts.vsteam.id)
+        print("Playoffs %s" % seriesid, end='                \r')
+        sys.stdout.flush()
 
         PlayoffsSeries.objects.update_or_create(
-            id = "%s-%s-%s" % (ts.season.id, ts.team.id, ts.vsteam.id),
+            id = seriesid,
             defaults = dict(
                 season = ts.season,
                 team = ts.team,
@@ -453,7 +469,8 @@ def calculate():
                 
         )
     
-    for s in Season.objects.all().order_by('id'):
+    for s in seasonquery.order_by('id'):
+
         rank = 1
         for ps in PlayoffsSeries.objects.filter(season=s, level__lt=3).order_by('level', '-won'):
             #print ps
@@ -584,6 +601,9 @@ def calculate():
         prevdate = None
         
         for g in Game.objects.filter(season=s).order_by('id'):
+            print("Game %s" % g.id, end='                \r')
+            sys.stdout.flush()
+
             id = g.id*10+1
             gameno = teamgames[g.hometeam.id] = teamgames.setdefault(g.hometeam.id, 0) + 1
             hlast = lastgame.get(g.hometeam.id)
@@ -623,6 +643,8 @@ def calculate():
                     else:
                         homepoints3 = 0
                         awaypoints3 = 3
+                    hometeamresult = "%d-%d" % (g.homescore, g.awayscore)
+                    awayteamresult = "%d-%d" % (g.awayscore, g.homescore)
                 else:
                     if g.homescore > g.awayscore:
                         homepoints3 = 2
@@ -633,6 +655,8 @@ def calculate():
                     else:
                         homepoints3 = 1
                         awaypoints3 = 1
+                    hometeamresult = "%d-%d %s" % (g.homescore, g.awayscore, g.resultattr)
+                    awayteamresult = "%d-%d %s" % (g.awayscore, g.homescore, g.resultattr)
 
             
             (tg, created) = TeamGame.objects.update_or_create(
@@ -649,6 +673,7 @@ def calculate():
                     teamscore = g.homescore,
                     vsteamscore = g.awayscore,
                     otgame = g.resultattr != '',
+                    teamresult = hometeamresult,
                     resultattr = g.resultattr,
                     won = g.homescore > g.awayscore,
                     tied = g.homescore == g.awayscore or g.resultattr != '',
@@ -677,6 +702,7 @@ def calculate():
                     teamscore = g.awayscore,
                     vsteamscore = g.homescore,
                     otgame = g.resultattr != '',
+                    teamresult = awayteamresult,
                     resultattr = g.resultattr,
                     won = g.homescore < g.awayscore,
                     tied = g.homescore == g.awayscore or g.resultattr != '',

@@ -36,7 +36,7 @@ class Command(BaseCommand):
             else:
                 calendar(kwargs['path'])
         elif kwargs.get('calculate'):
-            calculate()
+            calculate(kwargs['path'])
         else:
             loaddata(kwargs['path'])
         

@@ -1279,256 +1279,263 @@ def calendarcalc():
         g.save()
         
 
-def calculate():
-    teamgames = {}
-    teampos = {}
+def calculate(season):
 
-    gameend = parsetime('0:60:00')*60
-    for g in Game.objects.all().order_by('id'):
-        homegks = []
-        awaygks = []
-        homegoalsl = []
-        awaygoalsl = []
+    if season:
+        seasonquery = Season.objects.filter(id=season)
+    else:
+        seasonquery = Season.objects.all()
+    
+    for s in seasonquery.order_by('id'):
+        teamgames = {}
+        teampos = {}
 
-        if not g.playoffs:
-            (p, w, gdiff,tid) = teampos.get(g.hometeam.id, (0,0,0, g.hometeam.id))
-            teampos[g.hometeam.id] = (p+g.homepoints, w+(g.homepoints==3), gdiff+g.homescore-g.awayscore, tid)
-            (p, w, gdiff,tid) = teampos.get(g.awayteam.id, (0,0,0, g.awayteam.id))
-            teampos[g.awayteam.id] = (p+g.awaypoints, w+(g.awaypoints==3), gdiff+g.awayscore-g.homescore, tid)
+        gameend = parsetime('0:60:00')*60
+        for g in Game.objects.filter(season=s).order_by('id'):
+            homegks = []
+            awaygks = []
+            homegoalsl = []
+            awaygoalsl = []
 
-        for gke in g.gkevents.all().order_by('time'):
-            if gke.athome:
-                homegks.append((gke.time, gke.playerin))
-            else:
-                awaygks.append((gke.time, gke.playerin))
+            if not g.playoffs:
+                (p, w, gdiff,tid) = teampos.get(g.hometeam.id, (0,0,0, g.hometeam.id))
+                teampos[g.hometeam.id] = (p+g.homepoints, w+(g.homepoints==3), gdiff+g.homescore-g.awayscore, tid)
+                (p, w, gdiff,tid) = teampos.get(g.awayteam.id, (0,0,0, g.awayteam.id))
+                teampos[g.awayteam.id] = (p+g.awaypoints, w+(g.awaypoints==3), gdiff+g.awayscore-g.homescore, tid)
 
-        awaypenalties = homepenalties = 0
-        for p in g.penalties.all():
-            if p.athome:
-                homepenalties += p.minutes
-            else:
-                awaypenalties += p.minutes
-
-        for (team, vsteam, loc, n) in [(g.hometeam, g.awayteam, 'home',1), (g.awayteam, g.hometeam, 'away', 2)]:
-            gameno = teamgames[team] = teamgames.setdefault(team, 0)+1
-            gameno_loc = teamgames[loc+team.id] = teamgames.setdefault(loc+team.id, 0)+1
-            print(g.id, team.name, loc, gameno, gameno_loc, end="                     \r")
-            stats = Gamestats.objects.get(id=g.id)
-                
-            if team == g.hometeam:
-                Teamstats.objects.update_or_create(
-                    id = g.id*10+n,
-                    defaults = dict(
-                        season=g.season,
-                        playoffs=g.playoffs,
-                        game=g,
-                        team=team,
-                        vsteam=vsteam,
-                        gameno=gameno,
-                        gameno_loc=gameno_loc,
-                        athome=True,
-                        otgame=(g.time > gameend),
-                        wongame=g.homescore>g.awayscore,
-                        score=g.homescore,
-                        vsscore=g.awayscore,
-                        shots=stats.homeshots,
-                        vsshots=stats.awayshots,
-                        saved=stats.homesaved,
-                        vssaved=stats.awaysaved,
-                        penalties=homepenalties,
-                        vspenalties=awaypenalties,
-                        ppgoals=stats.homeppgoals,
-                        ppchances=stats.homeppchances,
-                        pptime=stats.homepptime,
-                        vsppgoals=stats.awayppgoals,
-                        vsppchances=stats.awayppchances,
-                        vspptime=stats.awaypptime,
-                    )
-                )
-            else:
-                Teamstats.objects.update_or_create(
-                    id = g.id*10+n,
-                    defaults = dict(
-                        season=g.season,
-                        playoffs=g.playoffs,
-                        game=g,
-                        team=team,
-                        vsteam=vsteam,
-                        gameno=gameno,
-                        gameno_loc=gameno_loc,
-                        athome=False,
-                        otgame=(g.time > gameend),
-                        wongame=g.homescore<g.awayscore,
-                        score=g.awayscore,
-                        vsscore=g.homescore,
-                        shots=stats.awayshots,
-                        vsshots=stats.homeshots,
-                        saved=stats.awaysaved,
-                        vssaved=stats.homesaved,
-                        penalties=awaypenalties,
-                        vspenalties=homepenalties,
-                        ppgoals=stats.awayppgoals,
-                        ppchances=stats.awayppchances,
-                        pptime=stats.awaypptime,
-                        vsppgoals=stats.homeppgoals,
-                        vsppchances=stats.homeppchances,
-                        vspptime=stats.homepptime,
-                    )
-                )
-
-        prevtime = parsetime('00:00')
-        i = 1
-
-        for go in g.goals.all().order_by('time'):
-            if go.athome:
-                homegoalsl.append((go.time, go.teamgoals))
-            else:
-                awaygoalsl.append((go.time, go.teamgoals))
-
-            GameState.objects.update_or_create(
-                id=int(g.id)*100+i,
-                defaults = dict(
-                    game = g,
-                    team = go.team,
-                    vsteam = go.vsteam,
-                    athome = go.athome,
-                    wongame = go.wongame,
-                    otgame = go.otgame,
-                    start = tdm2str(prevtime),
-                    end = tdm2str(go.time),
-                    time = tdm2str(go.time - prevtime),
-                    score = "%d-%d" % (go.teamgoals-1, go.vsteamgoals),
-                    goaldiff = go.goaldiff-1,
-                    teamgoals = go.teamgoals-1,
-                    vsteamgoals = go.vsteamgoals,
-                    gameresult = go.gameresult,
-                    playoffs = g.playoffs,
-                )
-            )
-            i+=1
-            GameState.objects.update_or_create(
-                id=int(g.id)*100+i,
-                defaults = dict(
-                    game = g,
-                    team = go.vsteam,
-                    vsteam = go.team,
-                    athome = not go.athome,
-                    wongame = not go.wongame,
-                    otgame = go.otgame,
-                    start = tdm2str(prevtime),
-                    end = tdm2str(go.time),
-                    time = tdm2str(go.time - prevtime),
-                    score = "%d-%d" % (go.vsteamgoals, go.teamgoals-1),
-                    goaldiff = 1-go.goaldiff,
-                    teamgoals = go.vsteamgoals,
-                    vsteamgoals = go.teamgoals-1,
-                    gameresult = go.gameresultvs,
-                    playoffs = g.playoffs,
-                )
-            )
-            i+=1
-            prevtime = go.time
-
-        if not go.otgame:
-            GameState.objects.update_or_create(
-                id=int(g.id)*100+i,
-                defaults = dict(
-                    game = g,
-                    team = go.team,
-                    vsteam = go.vsteam,
-                    athome = go.athome,
-                    wongame = go.wongame,
-                    otgame = go.otgame,
-                    start = tdm2str(go.time),
-                    end = tdm2str(gameend),
-                    time = tdm2str(gameend-go.time),
-                    score = "%d-%d" % (go.teamgoals, go.vsteamgoals),
-                    goaldiff = go.goaldiff,
-                    teamgoals = go.teamgoals,
-                    vsteamgoals = go.vsteamgoals,
-                    gameresult = go.gameresult,
-                    playoffs = g.playoffs,
-                )
-            )
-            i+=1
-            GameState.objects.update_or_create(
-                id=int(g.id)*100+i,
-                defaults = dict(
-                    game = g,
-                    team = go.vsteam,
-                    vsteam = go.team,
-                    athome = not go.athome,
-                    wongame = not go.wongame,
-                    otgame = go.otgame,
-                    start = tdm2str(go.time),
-                    end = tdm2str(gameend),
-                    time = tdm2str(gameend-go.time),
-                    score = "%d-%d" % (go.vsteamgoals, go.teamgoals),
-                    goaldiff = -go.goaldiff,
-                    teamgoals = go.vsteamgoals,
-                    vsteamgoals = go.teamgoals,
-                    gameresult = go.gameresultvs,
-                    playoffs = g.playoffs,
-                )
-            )
-            
-
-        homeshots = 0
-        awayshots = 0
-        homegk = StatePerTime(homegks, None)
-        awaygk = StatePerTime(awaygks, None)
-        homegoals = StatePerTime(homegoalsl, 0)
-        awaygoals = StatePerTime(awaygoalsl, 0)
-
-        for s in g.shots.order_by('time'):
-            if s.athome:
-                homeshots += 1
-                s.teamshots = homeshots
-                s.vsteamshots = awayshots
-                s.keeper = awaygk.get(s.time)
-                s.teamgoals = homegoals.get(s.time)
-                s.vsteamgoals = awaygoals.get(s.time)
-                s.teamscore = "%d-%d" % (s.teamgoals, s.vsteamgoals)
-                s.vsteamscore = "%d-%d" % (s.vsteamgoals, s.teamgoals)
-            else:
-                awayshots += 1
-                s.teamshots = awayshots
-                s.vsteamshots = homeshots
-                s.keeper = homegk.get(s.time)
-                s.teamgoals = awaygoals.get(s.time)
-                s.vsteamgoals = homegoals.get(s.time)
-                s.teamscore = "%d-%d" % (s.teamgoals, s.vsteamgoals)
-                s.vsteamscore = "%d-%d" % (s.vsteamgoals, s.teamgoals)
-            s.time = tdm2str(s.time)
-
-            s.save()
-
-        homegk = StatePerTime(homegks, None)
-        awaygk = StatePerTime(awaygks, None)
-        for ps in g.penaltyshots.order_by('time'):
-            if not ps.keeper:
-                if ps.athome:
-                    ps.keeper = awaygk.get(ps.time)
+            for gke in g.gkevents.all().order_by('time'):
+                if gke.athome:
+                    homegks.append((gke.time, gke.playerin))
                 else:
-                    ps.keeper = homegk.get(ps.time)
-            ps.time = tdm2str(ps.time)
-            ps.latestpenalty = tdm2str(ps.latestpenalty)
-            ps.latestpenaltyvs = tdm2str(ps.latestpenaltyvs)
-            ps.latestgoal = tdm2str(ps.latestgoal)
-            ps.latestgoalvs = tdm2str(ps.latestgoalvs)
-            ps.save()
+                    awaygks.append((gke.time, gke.playerin))
 
-    poslist = list(teampos.values())
-    poslist.sort()
-    poslist.reverse()
-    i = 1
-    for (p,w,gdiff,teamid) in poslist:
-        
-        t = Team.objects.get(id=teamid)
-        t.ranking = i
-        t.points = p
-        t.save()
-        i+=1
+            awaypenalties = homepenalties = 0
+            for p in g.penalties.all():
+                if p.athome:
+                    homepenalties += p.minutes
+                else:
+                    awaypenalties += p.minutes
+
+            for (team, vsteam, loc, n) in [(g.hometeam, g.awayteam, 'home',1), (g.awayteam, g.hometeam, 'away', 2)]:
+                gameno = teamgames[team] = teamgames.setdefault(team, 0)+1
+                gameno_loc = teamgames[loc+team.id] = teamgames.setdefault(loc+team.id, 0)+1
+                print(g.id, team.name, loc, gameno, gameno_loc, end="                     \r")
+                stats = Gamestats.objects.get(id=g.id)
+
+                if team == g.hometeam:
+                    Teamstats.objects.update_or_create(
+                        id = g.id*10+n,
+                        defaults = dict(
+                            season=g.season,
+                            playoffs=g.playoffs,
+                            game=g,
+                            team=team,
+                            vsteam=vsteam,
+                            gameno=gameno,
+                            gameno_loc=gameno_loc,
+                            athome=True,
+                            otgame=(g.time > gameend),
+                            wongame=g.homescore>g.awayscore,
+                            score=g.homescore,
+                            vsscore=g.awayscore,
+                            shots=stats.homeshots,
+                            vsshots=stats.awayshots,
+                            saved=stats.homesaved,
+                            vssaved=stats.awaysaved,
+                            penalties=homepenalties,
+                            vspenalties=awaypenalties,
+                            ppgoals=stats.homeppgoals,
+                            ppchances=stats.homeppchances,
+                            pptime=stats.homepptime,
+                            vsppgoals=stats.awayppgoals,
+                            vsppchances=stats.awayppchances,
+                            vspptime=stats.awaypptime,
+                        )
+                    )
+                else:
+                    Teamstats.objects.update_or_create(
+                        id = g.id*10+n,
+                        defaults = dict(
+                            season=g.season,
+                            playoffs=g.playoffs,
+                            game=g,
+                            team=team,
+                            vsteam=vsteam,
+                            gameno=gameno,
+                            gameno_loc=gameno_loc,
+                            athome=False,
+                            otgame=(g.time > gameend),
+                            wongame=g.homescore<g.awayscore,
+                            score=g.awayscore,
+                            vsscore=g.homescore,
+                            shots=stats.awayshots,
+                            vsshots=stats.homeshots,
+                            saved=stats.awaysaved,
+                            vssaved=stats.homesaved,
+                            penalties=awaypenalties,
+                            vspenalties=homepenalties,
+                            ppgoals=stats.awayppgoals,
+                            ppchances=stats.awayppchances,
+                            pptime=stats.awaypptime,
+                            vsppgoals=stats.homeppgoals,
+                            vsppchances=stats.homeppchances,
+                            vspptime=stats.homepptime,
+                        )
+                    )
+
+            prevtime = parsetime('00:00')
+            i = 1
+
+            for go in g.goals.all().order_by('time'):
+                if go.athome:
+                    homegoalsl.append((go.time, go.teamgoals))
+                else:
+                    awaygoalsl.append((go.time, go.teamgoals))
+
+                GameState.objects.update_or_create(
+                    id=int(g.id)*100+i,
+                    defaults = dict(
+                        game = g,
+                        team = go.team,
+                        vsteam = go.vsteam,
+                        athome = go.athome,
+                        wongame = go.wongame,
+                        otgame = go.otgame,
+                        start = tdm2str(prevtime),
+                        end = tdm2str(go.time),
+                        time = tdm2str(go.time - prevtime),
+                        score = "%d-%d" % (go.teamgoals-1, go.vsteamgoals),
+                        goaldiff = go.goaldiff-1,
+                        teamgoals = go.teamgoals-1,
+                        vsteamgoals = go.vsteamgoals,
+                        gameresult = go.gameresult,
+                        playoffs = g.playoffs,
+                    )
+                )
+                i+=1
+                GameState.objects.update_or_create(
+                    id=int(g.id)*100+i,
+                    defaults = dict(
+                        game = g,
+                        team = go.vsteam,
+                        vsteam = go.team,
+                        athome = not go.athome,
+                        wongame = not go.wongame,
+                        otgame = go.otgame,
+                        start = tdm2str(prevtime),
+                        end = tdm2str(go.time),
+                        time = tdm2str(go.time - prevtime),
+                        score = "%d-%d" % (go.vsteamgoals, go.teamgoals-1),
+                        goaldiff = 1-go.goaldiff,
+                        teamgoals = go.vsteamgoals,
+                        vsteamgoals = go.teamgoals-1,
+                        gameresult = go.gameresultvs,
+                        playoffs = g.playoffs,
+                    )
+                )
+                i+=1
+                prevtime = go.time
+
+            if not go.otgame:
+                GameState.objects.update_or_create(
+                    id=int(g.id)*100+i,
+                    defaults = dict(
+                        game = g,
+                        team = go.team,
+                        vsteam = go.vsteam,
+                        athome = go.athome,
+                        wongame = go.wongame,
+                        otgame = go.otgame,
+                        start = tdm2str(go.time),
+                        end = tdm2str(gameend),
+                        time = tdm2str(gameend-go.time),
+                        score = "%d-%d" % (go.teamgoals, go.vsteamgoals),
+                        goaldiff = go.goaldiff,
+                        teamgoals = go.teamgoals,
+                        vsteamgoals = go.vsteamgoals,
+                        gameresult = go.gameresult,
+                        playoffs = g.playoffs,
+                    )
+                )
+                i+=1
+                GameState.objects.update_or_create(
+                    id=int(g.id)*100+i,
+                    defaults = dict(
+                        game = g,
+                        team = go.vsteam,
+                        vsteam = go.team,
+                        athome = not go.athome,
+                        wongame = not go.wongame,
+                        otgame = go.otgame,
+                        start = tdm2str(go.time),
+                        end = tdm2str(gameend),
+                        time = tdm2str(gameend-go.time),
+                        score = "%d-%d" % (go.vsteamgoals, go.teamgoals),
+                        goaldiff = -go.goaldiff,
+                        teamgoals = go.vsteamgoals,
+                        vsteamgoals = go.teamgoals,
+                        gameresult = go.gameresultvs,
+                        playoffs = g.playoffs,
+                    )
+                )
+
+
+            homeshots = 0
+            awayshots = 0
+            homegk = StatePerTime(homegks, None)
+            awaygk = StatePerTime(awaygks, None)
+            homegoals = StatePerTime(homegoalsl, 0)
+            awaygoals = StatePerTime(awaygoalsl, 0)
+
+            for s in g.shots.order_by('time'):
+                if s.athome:
+                    homeshots += 1
+                    s.teamshots = homeshots
+                    s.vsteamshots = awayshots
+                    s.keeper = awaygk.get(s.time)
+                    s.teamgoals = homegoals.get(s.time)
+                    s.vsteamgoals = awaygoals.get(s.time)
+                    s.teamscore = "%d-%d" % (s.teamgoals, s.vsteamgoals)
+                    s.vsteamscore = "%d-%d" % (s.vsteamgoals, s.teamgoals)
+                else:
+                    awayshots += 1
+                    s.teamshots = awayshots
+                    s.vsteamshots = homeshots
+                    s.keeper = homegk.get(s.time)
+                    s.teamgoals = awaygoals.get(s.time)
+                    s.vsteamgoals = homegoals.get(s.time)
+                    s.teamscore = "%d-%d" % (s.teamgoals, s.vsteamgoals)
+                    s.vsteamscore = "%d-%d" % (s.vsteamgoals, s.teamgoals)
+                s.time = tdm2str(s.time)
+
+                s.save()
+
+            homegk = StatePerTime(homegks, None)
+            awaygk = StatePerTime(awaygks, None)
+            for ps in g.penaltyshots.order_by('time'):
+                if not ps.keeper:
+                    if ps.athome:
+                        ps.keeper = awaygk.get(ps.time)
+                    else:
+                        ps.keeper = homegk.get(ps.time)
+                ps.time = tdm2str(ps.time)
+                ps.latestpenalty = tdm2str(ps.latestpenalty)
+                ps.latestpenaltyvs = tdm2str(ps.latestpenaltyvs)
+                ps.latestgoal = tdm2str(ps.latestgoal)
+                ps.latestgoalvs = tdm2str(ps.latestgoalvs)
+                ps.save()
+
+        poslist = list(teampos.values())
+        poslist.sort()
+        poslist.reverse()
+        i = 1
+        for (p,w,gdiff,teamid) in poslist:
+
+            t = Team.objects.get(id=teamid)
+            t.ranking = i
+            t.points = p
+            t.save()
+            i+=1
 
 
 
